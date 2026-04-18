@@ -43,3 +43,43 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# === AI / local notes ===
+CLAUDE.md
+
+# === Environment / secrets ===
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# === Firebase ===
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+.firebaserc
+firestore-debug.log
+ui-debug.log
+
+# === Cloud Functions (Node) ===
+functions/node_modules/
+functions/.env
+functions/lib/
+
+# === Google Maps / Firebase platform configs ===
+google-services.json
+GoogleService-Info.plist
+ios/Runner/firebase_app_id_file.json
+
+# === macOS extras ===
+.AppleDouble
+.LSOverride
+
+# === VS Code workspace ===
+.vscode/
+
+# === Editor backups ===
+*~
+*.bak
+.#*
