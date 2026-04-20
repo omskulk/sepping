@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function roleOf(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.role;
+    }
+
+    // ---- /users ----
+    match /users/{uid} {
+      // Any signed-in user can read the user directory (to pick PNMs, show leaderboard).
+      allow read: if isSignedIn();
+
+      // You can create your own user doc at signup.
+      allow create: if isSelf(uid);
+
+      // You can update your own profile fields, but NOT your own credits or completedPings.
+      // Credits are decremented by the active dropping the ping (self-update allowed via
+      // transaction), and completedPings is bumped by the submitting PNM (self-update also
+      // allowed). Stricter enforcement requires Cloud Functions — tracked as v2 work.
+      allow update: if isSelf(uid);
+
+      allow delete: if false;
+    }
+
+    // ---- /pings ----
+    match /pings/{pingId} {
+      allow read: if isSignedIn();
+
+      // Only Actives can create a ping, and only ones they author.
+      allow create: if isSignedIn()
+        && roleOf(request.auth.uid) == 'active'
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'pending';
+
+      // Either the creating Active or the assigned PNM can update (photo proof / completion).
+      allow update: if isSignedIn()
+        && (resource.data.createdBy == request.auth.uid
+            || resource.data.assignedTo == request.auth.uid);
+
+      allow delete: if false;
+    }
+  }
+}
