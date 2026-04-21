@@ -1,0 +1,138 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+    function roleOf(uid) {
+      return userDoc(uid).role;
+    }
+    function isNme(uid) {
+      return userDoc(uid).get('isNme', false) == true;
+    }
+
+    // ---- /users ----
+    match /users/{uid} {
+      // Any signed-in user can read the user directory (to pick PNMs, show leaderboard).
+      allow read: if isSignedIn();
+
+      // Self-create on signup.
+      allow create: if isSelf(uid);
+
+      // Self-update is allowed for profile fields, but a PNM cannot mutate
+      // their own `strikes` counter, and nobody can self-promote to NME.
+      // The NME field can only be flipped manually in the Firestore console
+      // (no app UI for promotion in MVP).
+      allow update: if isSelf(uid)
+        && request.resource.data.get('strikes', 0) == resource.data.get('strikes', 0)
+        && request.resource.data.get('isNme', false) == resource.data.get('isNme', false);
+
+      // The NME may bump or decrement another PNM's strike count (used by
+      // approveRequest / removeStrike transactions). Nothing else they can
+      // change about another user's profile.
+      allow update: if isSignedIn()
+        && isNme(request.auth.uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['strikes']);
+
+      allow delete: if false;
+    }
+
+    // ---- /pings ----
+    // Capacity + visibility model (see docs/PING_REDESIGN.md).
+    //
+    // Reads:
+    //   * Any active can read everything (chapter-wide bulletin + map).
+    //   * A PNM can read a ping only if it's published to them:
+    //       - visibility == 'all', OR
+    //       - visibility == 'specific' AND their uid is in eligiblePnmUids.
+    //     Drafts are invisible to PNMs by construction.
+    //
+    // Creates:
+    //   * An active, creating their own draft, with no claims, valid capacity.
+    //
+    // Updates:
+    //   * The creator can edit a draft OR publish it.
+    //   * Any PNM can update the ping (used by acceptPing / submitProof
+    //     transactions that mutate the `claims` array and/or `status`).
+    //     Precise-delta enforcement at the rule level is painful; the client
+    //     transactions are the source of truth and a Cloud Function tightening
+    //     pass is a v2 item.
+    match /pings/{pingId} {
+      allow read: if isSignedIn() && (
+        roleOf(request.auth.uid) == 'active'
+        || resource.data.visibility == 'all'
+        || (resource.data.visibility == 'specific'
+            && request.auth.uid in resource.data.eligiblePnmUids)
+        // Completed pings are chapter history — visible to everyone signed
+        // in (including PNMs who weren't on the original eligibility list)
+        // so the History screen can show every chapter completion.
+        || resource.data.status == 'completed'
+      );
+
+      allow create: if isSignedIn()
+        && roleOf(request.auth.uid) == 'active'
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.visibility == 'draft'
+        && request.resource.data.status == 'open'
+        && request.resource.data.claims.size() == 0
+        && request.resource.data.capacity is int
+        && request.resource.data.capacity >= 1;
+
+      allow update: if isSignedIn() && (
+        resource.data.createdBy == request.auth.uid
+        || roleOf(request.auth.uid) == 'pnm'
+      );
+
+      allow delete: if false;
+    }
+
+    // ---- /strikeRequests ----
+    // Filed by any active, reviewed by the NME. Issuer can read their own;
+    // the NME can read all.
+    match /strikeRequests/{reqId} {
+      allow read: if isSignedIn()
+        && (resource.data.issuedBy == request.auth.uid || isNme(request.auth.uid));
+
+      // Any active may file a request, only as themselves, with status=pending.
+      allow create: if isSignedIn()
+        && roleOf(request.auth.uid) == 'active'
+        && request.resource.data.issuedBy == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.pnmUids is list
+        && request.resource.data.pnmUids.size() > 0;
+
+      // Only the NME can review (approve / deny); status must transition out
+      // of pending and reviewedBy must be them.
+      allow update: if isSignedIn()
+        && isNme(request.auth.uid)
+        && resource.data.status == 'pending'
+        && request.resource.data.reviewedBy == request.auth.uid;
+
+      allow delete: if false;
+    }
+
+    // ---- /strikes ----
+    // Created by the NME (via approveRequest transaction). Visible to the
+    // affected PNM (their own strikes), to all Actives (chapter-wide context),
+    // and obviously to the NME.
+    match /strikes/{strikeId} {
+      allow read: if isSignedIn()
+        && (resource.data.pnmUid == request.auth.uid
+            || roleOf(request.auth.uid) == 'active');
+
+      // Only the NME may create or update strikes (for amendments and
+      // soft-removal). Never deletable — audit trail.
+      allow create: if isSignedIn() && isNme(request.auth.uid);
+      allow update: if isSignedIn() && isNme(request.auth.uid);
+      allow delete: if false;
+    }
+  }
+}

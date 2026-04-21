@@ -83,3 +83,8 @@ ios/Runner/firebase_app_id_file.json
 *~
 *.bak
 .#*
+
+# === Service account keys (NEVER COMMIT) ===                                       
+serviceAccountKey.json
+*-firebase-adminsdk-*.json
+scripts/node_modules/
