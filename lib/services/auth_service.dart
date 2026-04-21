@@ -40,6 +40,8 @@ class AuthService {
       role: role,
       pingCredits: role == UserRole.active ? activeStartingCredits : 0,
       completedPings: 0,
+      strikes: 0,
+      isNme: false,
       createdAt: DateTime.now(),
     );
     await _firestore.collection('users').doc(uid).set(user.toDoc());

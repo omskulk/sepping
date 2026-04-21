@@ -17,7 +17,10 @@ class AppTheme {
   static ThemeData light() {
     final base = ThemeData.light(useMaterial3: true);
 
-    final displayFont = GoogleFonts.bebasNeueTextTheme();
+    // Oswald replaces Bebas Neue for display: same condensed SigEP feel, but
+    // it actually has distinct lowercase glyphs (Bebas Neue is an all-caps
+    // font where "a" renders identical to "A"). Body stays Inter.
+    final displayFont = GoogleFonts.oswaldTextTheme();
     final bodyFont = GoogleFonts.interTextTheme();
 
     final textTheme = base.textTheme
@@ -56,10 +59,10 @@ class AppTheme {
         foregroundColor: SepColors.light,
         centerTitle: false,
         elevation: 0,
-        titleTextStyle: GoogleFonts.bebasNeue(
+        titleTextStyle: GoogleFonts.oswald(
           color: SepColors.light,
-          fontSize: 28,
-          letterSpacing: 2.0,
+          fontSize: 24,
+          letterSpacing: 1.6,
           fontWeight: FontWeight.w500,
         ),
       ),

@@ -7,6 +7,7 @@ import '../../models/app_user.dart';
 import '../../models/ping.dart';
 import '../../services/ping_service.dart';
 import '../../theme/app_theme.dart';
+import '../pnm/ping_detail_screen.dart';
 import '../shared/app_scaffold.dart';
 import 'drop_ping_dialog.dart';
 
@@ -25,21 +26,21 @@ class ActiveHome extends StatefulWidget {
 }
 
 class _ActiveHomeState extends State<ActiveHome> {
-  GoogleMapController? _mapController;
   LatLng? _pendingTap;
 
   Future<void> _onTap(LatLng pos) async {
     setState(() => _pendingTap = pos);
     final active = context.read<AppUser>();
-    final result = await showDialog<bool>(
+    final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => DropPingDialog(active: active, lat: pos.latitude, lng: pos.longitude),
+      builder: (_) =>
+          DropPingDialog(active: active, lat: pos.latitude, lng: pos.longitude),
     );
     if (!mounted) return;
     setState(() => _pendingTap = null);
-    if (result == true) {
+    if (ok == true) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ping dropped.')),
+        const SnackBar(content: Text('Draft saved to bulletin.')),
       );
     }
   }
@@ -47,33 +48,65 @@ class _ActiveHomeState extends State<ActiveHome> {
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AppUser>();
+    final pingService = context.read<PingService>();
     return AppScaffold(
       title: 'Active · ${user.displayName}',
-      subtitle: 'Tap the map to drop a pin and assign a task.',
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 900;
-          final map = _MapPanel(
-            pendingTap: _pendingTap,
-            onMapCreated: (c) => _mapController = c,
-            onTap: _onTap,
-          );
-          final list = _MyPingsList(activeUid: user.uid);
-          if (wide) {
-            return Row(
-              children: [
-                Expanded(flex: 3, child: map),
-                const VerticalDivider(width: 1),
-                SizedBox(width: 380, child: list),
-              ],
-            );
-          }
-          return Column(
-            children: [
-              SizedBox(height: 360, child: map),
-              const Divider(height: 1),
-              Expanded(child: list),
-            ],
+      subtitle:
+          'Tap the map to drop a draft. Publish from the bulletin to send it to PNMs.',
+      body: StreamBuilder<List<Ping>>(
+        stream: pingService.watchAllPings(),
+        builder: (context, snap) {
+          final all = snap.data ?? const <Ping>[];
+          // Completed pings live on the History screen — they shouldn't
+          // clutter the live map or sidebars.
+          final live = all
+              .where((p) => p.status != PingStatus.completed &&
+                  p.status != PingStatus.cancelled)
+              .toList();
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 980;
+              final dialogOpen = _pendingTap != null;
+              final map = _MapPanel(
+                pendingTap: _pendingTap,
+                pings: live,
+                onTap: dialogOpen ? null : _onTap,
+                onMarkerTap: (p) => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => Provider<AppUser>.value(
+                      value: user,
+                      child: PingDetailScreen(pingId: p.id),
+                    ),
+                  ),
+                ),
+              );
+              // Chapter-wide transparency: every active sees every
+              // published ping, not just their own. Prevents a creator
+              // from publishing something inappropriate that only PNMs
+              // would ever see. Drafts moved to BulletinScreen so this
+              // pane has full vertical room.
+              final activity = _PublishedPane(
+                pings: live.where((p) => !p.isDraft).toList(),
+                meUid: user.uid,
+              );
+
+              if (wide) {
+                return Row(
+                  children: [
+                    Expanded(flex: 3, child: map),
+                    const VerticalDivider(width: 1),
+                    SizedBox(width: 380, child: activity),
+                  ],
+                );
+              }
+              return Column(
+                children: [
+                  SizedBox(height: 320, child: map),
+                  const Divider(height: 1),
+                  Expanded(child: activity),
+                ],
+              );
+            },
           );
         },
       ),
@@ -81,78 +114,107 @@ class _ActiveHomeState extends State<ActiveHome> {
   }
 }
 
+/// Color-encodes status onto markers. Default Google hues are coarse but free —
+/// custom bitmaps require a build-time asset and an `await` on plugin init.
+double _hueFor(Ping p) {
+  if (p.status == PingStatus.completed) return BitmapDescriptor.hueGreen;
+  if (p.status == PingStatus.full) return BitmapDescriptor.hueYellow;
+  if (p.isDraft) return BitmapDescriptor.hueViolet;
+  return BitmapDescriptor.hueAzure; // open + published
+}
+
 class _MapPanel extends StatelessWidget {
   const _MapPanel({
     required this.pendingTap,
-    required this.onMapCreated,
+    required this.pings,
     required this.onTap,
+    required this.onMarkerTap,
   });
 
   final LatLng? pendingTap;
-  final void Function(GoogleMapController) onMapCreated;
-  final void Function(LatLng) onTap;
+  final List<Ping> pings;
+  final void Function(LatLng)? onTap;
+  final void Function(Ping) onMarkerTap;
 
   @override
   Widget build(BuildContext context) {
+    final markers = <Marker>{
+      for (final p in pings)
+        Marker(
+          markerId: MarkerId(p.id),
+          position: LatLng(p.lat, p.lng),
+          icon: BitmapDescriptor.defaultMarkerWithHue(_hueFor(p)),
+          infoWindow: InfoWindow(
+            title: p.taskDescription,
+            snippet:
+                '${p.visibility.name} · ${p.claims.length}/${p.capacity} slots',
+            onTap: () => onMarkerTap(p),
+          ),
+          onTap: () => onMarkerTap(p),
+        ),
+      if (pendingTap != null)
+        Marker(
+          markerId: const MarkerId('pending'),
+          position: pendingTap!,
+          icon: BitmapDescriptor.defaultMarker,
+          infoWindow: const InfoWindow(title: 'New pin'),
+        ),
+    };
     return GoogleMap(
       initialCameraPosition: _defaultCamera,
-      onMapCreated: onMapCreated,
+      onMapCreated: (_) {},
       onTap: onTap,
-      markers: {
-        if (pendingTap != null)
-          Marker(
-            markerId: const MarkerId('pending'),
-            position: pendingTap!,
-            infoWindow: const InfoWindow(title: 'New pin'),
-          ),
-      },
+      markers: markers,
       mapToolbarEnabled: false,
       zoomControlsEnabled: true,
     );
   }
 }
 
-class _MyPingsList extends StatelessWidget {
-  const _MyPingsList({required this.activeUid});
-  final String activeUid;
+class _PublishedPane extends StatelessWidget {
+  const _PublishedPane({required this.pings, required this.meUid});
+  final List<Ping> pings;
+  final String meUid;
 
   @override
   Widget build(BuildContext context) {
-    final pings = context.read<PingService>();
     return Container(
       color: SepColors.light,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text('MY PINGS', style: Theme.of(context).textTheme.titleMedium),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Row(
+              children: [
+                const Icon(Icons.public, size: 18, color: SepColors.navy),
+                const SizedBox(width: 6),
+                Text('PUBLISHED (CHAPTER)',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const Spacer(),
+                Chip(
+                  visualDensity: VisualDensity.compact,
+                  label: Text('${pings.length}'),
+                ),
+              ],
+            ),
           ),
           Expanded(
-            child: StreamBuilder<List<Ping>>(
-              stream: pings.watchPingsCreatedBy(activeUid),
-              builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final list = snap.data ?? const [];
-                if (list.isEmpty) {
-                  return const Padding(
+            child: pings.isEmpty
+                ? const Padding(
                     padding: EdgeInsets.all(24),
                     child: Text(
-                      'No pings yet. Tap the map to drop one.',
+                      'No published pings yet.',
                       style: TextStyle(color: SepColors.blueGray),
                     ),
-                  );
-                }
-                return ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                  itemCount: list.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 6),
-                  itemBuilder: (_, i) => _PingTile(ping: list[i]),
-                );
-              },
-            ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                    itemCount: pings.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 6),
+                    itemBuilder: (_, i) =>
+                        _PublishedRow(ping: pings[i], meUid: meUid),
+                  ),
           ),
         ],
       ),
@@ -160,79 +222,68 @@ class _MyPingsList extends StatelessWidget {
   }
 }
 
-class _PingTile extends StatelessWidget {
-  const _PingTile({required this.ping});
+class _PublishedRow extends StatelessWidget {
+  const _PublishedRow({required this.ping, required this.meUid});
   final Ping ping;
-
+  final String meUid;
   @override
   Widget build(BuildContext context) {
-    final completed = ping.status == PingStatus.completed;
     final dateStr = DateFormat.MMMd().add_jm().format(ping.createdAt);
+    final mine = ping.createdBy == meUid;
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: ListTile(
+        leading: Icon(_iconFor(ping.status), color: _colorFor(ping.status)),
+        title: Row(
           children: [
-            Row(
-              children: [
-                Icon(
-                  completed ? Icons.check_circle : Icons.pending_actions,
-                  size: 18,
-                  color: completed ? SepColors.success : SepColors.blueGray,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    ping.assignedToName,
-                    style: Theme.of(context).textTheme.titleSmall,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Text(dateStr,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: SepColors.blueGray)),
-              ],
+            Expanded(
+              child: Text(ping.taskDescription,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleSmall),
             ),
-            const SizedBox(height: 6),
-            Text(ping.taskDescription, maxLines: 3, overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Chip(
+            if (mine)
+              const Padding(
+                padding: EdgeInsets.only(left: 6),
+                child: Chip(
                   visualDensity: VisualDensity.compact,
-                  label: Text('${ping.creditCost} cr'),
+                  label: Text('MINE'),
                 ),
-                const SizedBox(width: 6),
-                Chip(
-                  visualDensity: VisualDensity.compact,
-                  backgroundColor: completed ? SepColors.success.withValues(alpha: .15) : null,
-                  label: Text(ping.status.label),
-                ),
-                const Spacer(),
-                if (completed && ping.photoUrl != null)
-                  TextButton.icon(
-                    onPressed: () => _showPhoto(context, ping.photoUrl!),
-                    icon: const Icon(Icons.photo_outlined, size: 18),
-                    label: const Text('View proof'),
-                  ),
-              ],
-            ),
+              ),
           ],
+        ),
+        subtitle: Text(
+          'by ${ping.createdByName} · ${ping.status.label} · '
+          '${ping.claims.length}/${ping.capacity} · '
+          '${ping.visibility.name} · $dateStr',
+          style: Theme.of(context)
+              .textTheme
+              .bodySmall
+              ?.copyWith(color: SepColors.blueGray),
+        ),
+        trailing: const Icon(Icons.chevron_right, color: SepColors.blueGray),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => Provider<AppUser>.value(
+              value: context.read<AppUser>(),
+              child: PingDetailScreen(pingId: ping.id),
+            ),
+          ),
         ),
       ),
     );
   }
 
-  void _showPhoto(BuildContext context, String url) {
-    showDialog<void>(
-      context: context,
-      builder: (_) => Dialog(
-        child: InteractiveViewer(child: Image.network(url)),
-      ),
-    );
-  }
-}
+  IconData _iconFor(PingStatus s) => switch (s) {
+        PingStatus.completed => Icons.check_circle,
+        PingStatus.full => Icons.lock_clock,
+        PingStatus.cancelled => Icons.cancel_outlined,
+        PingStatus.open => Icons.location_on,
+      };
 
+  Color _colorFor(PingStatus s) => switch (s) {
+        PingStatus.completed => SepColors.success,
+        PingStatus.full => SepColors.darkNavy,
+        PingStatus.cancelled => SepColors.blueGray,
+        PingStatus.open => SepColors.navy,
+      };
+}

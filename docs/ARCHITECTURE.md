@@ -1,7 +1,20 @@
 # SigEP Ping — architecture walkthrough
 
-Built during a "claude coffee break" session on branch `cbb`. This doc explains every
-file I added so you can step through the code knowing the why, not just the what.
+> **Update (2026-04-19):** strike tracking, seed/unseed scripts,
+> and a Flutter-web pin click-through fix were added. See:
+>
+> - [`STRIKES.md`](STRIKES.md) — strike request → NME approval → strike fan-out
+> - [`SEEDING.md`](SEEDING.md) — `npm run seed | unseed | reset-cycle` from `/scripts`
+> - [`PIN_BUG_FIX.md`](PIN_BUG_FIX.md) — why dialog clicks were leaking to the map and how it's blocked
+> - [`BROADCAST_PINGS.md`](BROADCAST_PINGS.md) — *(superseded by PING_REDESIGN.md)* one task → N PNMs in a single transaction (default: all)
+> - [`PROVIDER_ROUTING_FIX.md`](PROVIDER_ROUTING_FIX.md) — why pushed strike screens threw ProviderNotFoundException
+> - [`PING_REDESIGN.md`](PING_REDESIGN.md) — capacity/draft/publish lifecycle, first-come-first-served slot claims, dual-sidebar PNM view
+>
+> **Google Maps pin deprecation note:** `google.maps.Marker is deprecated` warnings in the console originate inside `google_maps_flutter_web` (Google deprecated `Marker` in favor of `AdvancedMarkerElement`). The Flutter plugin hasn't migrated yet; nothing to do on our end until it does.
+>
+> The original walkthrough below still describes the ping flow, auth gate, and
+> styling. The new files slot into the same patterns (Provider, StreamBuilder,
+> Firestore transactions where atomicity matters).
 
 ## Mental model
 

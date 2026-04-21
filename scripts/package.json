@@ -1,0 +1,14 @@
+{
+  "name": "sepping-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Admin scripts for seeding and resetting the sepping77 Firebase project.",
+  "scripts": {
+    "seed": "node seed.js",
+    "unseed": "node unseed.js",
+    "reset-cycle": "node reset-cycle.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0"
+  }
+}

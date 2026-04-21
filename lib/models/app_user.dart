@@ -26,6 +26,8 @@ class AppUser {
   final UserRole role;
   final int pingCredits;
   final int completedPings;
+  final int strikes;
+  final bool isNme;
   final DateTime createdAt;
 
   const AppUser({
@@ -35,6 +37,8 @@ class AppUser {
     required this.role,
     required this.pingCredits,
     required this.completedPings,
+    required this.strikes,
+    required this.isNme,
     required this.createdAt,
   });
 
@@ -50,6 +54,8 @@ class AppUser {
       role: UserRole.fromString(d['role'] as String?),
       pingCredits: (d['pingCredits'] as num?)?.toInt() ?? 0,
       completedPings: (d['completedPings'] as num?)?.toInt() ?? 0,
+      strikes: (d['strikes'] as num?)?.toInt() ?? 0,
+      isNme: d['isNme'] as bool? ?? false,
       createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
@@ -60,6 +66,8 @@ class AppUser {
         'role': role.storageValue,
         'pingCredits': pingCredits,
         'completedPings': completedPings,
+        'strikes': strikes,
+        'isNme': isNme,
         'createdAt': Timestamp.fromDate(createdAt),
       };
 }

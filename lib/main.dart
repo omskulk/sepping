@@ -6,6 +6,7 @@ import 'firebase_options.dart';
 import 'screens/shared/auth_gate.dart';
 import 'services/auth_service.dart';
 import 'services/ping_service.dart';
+import 'services/strike_service.dart';
 import 'services/user_service.dart';
 import 'theme/app_theme.dart';
 
@@ -25,9 +26,10 @@ class SeppingApp extends StatelessWidget {
         Provider<AuthService>(create: (_) => AuthService()),
         Provider<UserService>(create: (_) => UserService()),
         Provider<PingService>(create: (_) => PingService()),
+        Provider<StrikeService>(create: (_) => StrikeService()),
       ],
       child: MaterialApp(
-        title: 'SigEP Ping',
+        title: 'SEPing',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         home: const AuthGate(),

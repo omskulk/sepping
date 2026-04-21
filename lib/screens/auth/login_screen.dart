@@ -63,9 +63,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('SIGEP PING',
+                      Text('SEPing',
                           textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.displaySmall?.copyWith(letterSpacing: 4)),
+                          style: Theme.of(context)
+                              .textTheme
+                              .displaySmall
+                              ?.copyWith(letterSpacing: 1.5)),
                       const SizedBox(height: 4),
                       Text(
                         'Drop pins. Assign tasks. Prove it.',
@@ -78,6 +81,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         decoration: const InputDecoration(labelText: 'Email'),
                         keyboardType: TextInputType.emailAddress,
                         autofillHints: const [AutofillHints.email],
+                        // Pressing Enter in the email field should jump to
+                        // the password field, not submit (the password is
+                        // still empty at this point).
+                        textInputAction: TextInputAction.next,
                         validator: (v) =>
                             (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
                       ),
@@ -87,6 +94,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         decoration: const InputDecoration(labelText: 'Password'),
                         obscureText: true,
                         autofillHints: const [AutofillHints.password],
+                        // Enter on the password field == clicking SIGN IN.
+                        textInputAction: TextInputAction.done,
+                        onFieldSubmitted: (_) {
+                          if (!_busy) _submit();
+                        },
                         validator: (v) =>
                             (v == null || v.length < 6) ? 'At least 6 characters' : null,
                       ),

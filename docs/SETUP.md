@@ -1,6 +1,6 @@
 # SigEP Ping — setup & run
 
-Already done by you (you did these while the coffee was brewing):
+Prerequisites (already set up):
 
 - ✅ Node + npm + firebase-tools + flutterfire CLI installed
 - ✅ Firebase project `sepping77` created
@@ -92,8 +92,3 @@ Or use the Firebase CLI:
 - No push notifications.
 - Web only.
 
-## Branch conventions
-
-This code was written on `cbb` (coffee break branch) without per-file approval per the
-project's "BLIND BUILD" clause in `CLAUDE.md`. Review diffs normally and commit when
-satisfied; commits are your call, not Claude's.

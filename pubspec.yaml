@@ -40,6 +40,11 @@ dependencies:
 
   google_maps_flutter: ^2.9.0
   google_maps_flutter_web: ^0.5.10
+  # On Flutter web the Google Map is an HtmlElementView, so click events on
+  # widgets layered above (dialogs, buttons) leak through to the map below.
+  # PointerInterceptor blocks that propagation. Required to fix the bug where
+  # tapping "DROP PIN" inside the dialog also re-tapped the map underneath.
+  pointer_interceptor: ^0.10.1+2
 
   url_launcher: ^6.3.1
   image_picker: ^1.1.2
